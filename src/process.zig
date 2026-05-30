@@ -46,6 +46,11 @@ pub const KillSummary = struct {
     }
 };
 
+const KillTarget = struct {
+    pid: i32,
+    input: []const u8,
+};
+
 pub fn listProcesses(allocator: std.mem.Allocator, io: std.Io, all_users: bool) !std.ArrayList(ProcessInfo) {
     const flags = if (all_users) "axwwxo" else "xwwxo";
     const process_result = try runCapture(allocator, io, &.{ "ps", flags, "pid=,ppid=,uid=,pcpu=,pmem=,comm=" }, true);
@@ -127,52 +132,83 @@ pub fn killInputs(
     var summary = KillSummary{};
     errdefer summary.deinit(allocator);
 
-    var killed_pids: std.ArrayList(i32) = .empty;
-    defer killed_pids.deinit(allocator);
+    var targets = try resolveKillTargets(allocator, io, inputs, options.ignore_case, &summary);
+    defer targets.deinit(allocator);
 
-    const signal: std.posix.SIG = if (options.force) .KILL else .TERM;
+    var signaled_pids = try signalKillTargets(allocator, targets.items, if (options.force) .KILL else .TERM, &summary);
+    defer signaled_pids.deinit(allocator);
 
-    for (inputs) |input| {
-        var pids = try resolveInputToPids(allocator, io, input, options.ignore_case);
-        defer pids.deinit(allocator);
-
-        if (pids.items.len == 0) {
-            try summary.errors.append(allocator, try std.fmt.allocPrint(allocator, "Killing process {s} failed: Process doesn't exist", .{input}));
-            continue;
-        }
-
-        for (pids.items) |pid| {
-            if (pid == std.c.getpid()) {
-                continue;
-            }
-
-            std.posix.kill(pid, signal) catch |err| {
-                const message = switch (err) {
-                    error.ProcessNotFound => try std.fmt.allocPrint(allocator, "Killing process {s} failed: Process doesn't exist", .{input}),
-                    error.PermissionDenied => try std.fmt.allocPrint(allocator, "Killing process {s} failed: Operation not permitted", .{input}),
-                    else => try std.fmt.allocPrint(allocator, "Killing process {s} failed: {s}", .{ input, @errorName(err) }),
-                };
-                try summary.errors.append(allocator, message);
-                continue;
-            };
-
-            if (!hasPid(killed_pids.items, pid)) {
-                try killed_pids.append(allocator, pid);
-            }
-        }
-    }
-
-    if (summary.errors.items.len == 0) {
-        if (options.force_after_timeout_ms) |timeout_ms| {
-            var survivors = try waitForExit(allocator, killed_pids.items, timeout_ms);
-            defer survivors.deinit(allocator);
-            for (survivors.items) |pid| {
-                std.posix.kill(pid, .KILL) catch {};
-            }
+    if (options.force_after_timeout_ms) |timeout_ms| {
+        var survivors = try waitForExit(allocator, signaled_pids.items, timeout_ms);
+        defer survivors.deinit(allocator);
+        for (survivors.items) |pid| {
+            std.posix.kill(pid, .KILL) catch {};
         }
     }
 
     return summary;
+}
+
+fn resolveKillTargets(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    inputs: []const []const u8,
+    ignore_case: bool,
+    summary: *KillSummary,
+) !std.ArrayList(KillTarget) {
+    var targets: std.ArrayList(KillTarget) = .empty;
+    errdefer targets.deinit(allocator);
+
+    const current_pid = std.c.getpid();
+    for (inputs) |input| {
+        var pids = try resolveInputToPids(allocator, io, input, ignore_case);
+        defer pids.deinit(allocator);
+
+        if (pids.items.len == 0) {
+            try appendKillError(allocator, summary, input, error.ProcessNotFound);
+            continue;
+        }
+
+        for (pids.items) |pid| {
+            if (pid == current_pid or targetIndex(targets.items, pid) != null) {
+                continue;
+            }
+
+            try targets.append(allocator, .{ .pid = pid, .input = input });
+        }
+    }
+
+    return targets;
+}
+
+fn signalKillTargets(
+    allocator: std.mem.Allocator,
+    targets: []const KillTarget,
+    signal: std.posix.SIG,
+    summary: *KillSummary,
+) !std.ArrayList(i32) {
+    var signaled_pids: std.ArrayList(i32) = .empty;
+    errdefer signaled_pids.deinit(allocator);
+
+    for (targets) |target| {
+        std.posix.kill(target.pid, signal) catch |err| {
+            try appendKillError(allocator, summary, target.input, err);
+            continue;
+        };
+
+        try signaled_pids.append(allocator, target.pid);
+    }
+
+    return signaled_pids;
+}
+
+fn appendKillError(allocator: std.mem.Allocator, summary: *KillSummary, input: []const u8, err: anyerror) !void {
+    const message = switch (err) {
+        error.ProcessNotFound => try std.fmt.allocPrint(allocator, "Killing process {s} failed: Process doesn't exist", .{input}),
+        error.PermissionDenied => try std.fmt.allocPrint(allocator, "Killing process {s} failed: Operation not permitted", .{input}),
+        else => try std.fmt.allocPrint(allocator, "Killing process {s} failed: {s}", .{ input, @errorName(err) }),
+    };
+    try summary.errors.append(allocator, message);
 }
 
 pub fn processExists(pid: i32) bool {
@@ -469,13 +505,11 @@ fn extractFirstAddressPort(line: []const u8) ?u16 {
     return null;
 }
 
-fn hasPid(pids: []const i32, pid: i32) bool {
-    for (pids) |existing| {
-        if (existing == pid) {
-            return true;
-        }
+fn targetIndex(targets: []const KillTarget, pid: i32) ?usize {
+    for (targets, 0..) |target, index| {
+        if (target.pid == pid) return index;
     }
-    return false;
+    return null;
 }
 
 fn hasPort(ports: []const u16, port: u16) bool {
@@ -571,6 +605,29 @@ test "kill spawned pid" {
     defer summary.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(@as(usize, 0), summary.errors.items.len);
+    var survivors = try waitForExit(std.testing.allocator, &.{child.id.?}, 1000);
+    defer survivors.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), survivors.items.len);
+}
+
+test "force-after-timeout escalates signaled pids despite unrelated input errors" {
+    var child = try std.process.spawn(std.testing.io, .{
+        .argv = &.{ "sh", "-c", "trap '' TERM; sleep 30" },
+        .stdin = .ignore,
+        .stdout = .ignore,
+        .stderr = .ignore,
+    });
+    defer child.kill(std.testing.io) catch {};
+
+    const pid_text = try std.fmt.allocPrint(std.testing.allocator, "{d}", .{child.id.?});
+    defer std.testing.allocator.free(pid_text);
+
+    var summary = try killInputs(std.testing.allocator, std.testing.io, &.{ pid_text, "definitely-not-a-running-process" }, .{
+        .force_after_timeout_ms = 10,
+    });
+    defer summary.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 1), summary.errors.items.len);
     var survivors = try waitForExit(std.testing.allocator, &.{child.id.?}, 1000);
     defer survivors.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 0), survivors.items.len);
