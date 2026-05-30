@@ -1,0 +1,34 @@
+{
+  "name": "fkill-zig",
+  "version": "9.0.0",
+  "description": "Zig reimplementation of fkill-cli for macOS.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "os": [
+    "darwin"
+  ],
+  "bin": {
+    "fkill": "./bin/fkill.js"
+  },
+  "files": [
+    "bin",
+    "npm-bin/fkill",
+    "src",
+    "build.zig",
+    "build.zig.zon",
+    "README.md"
+  ],
+  "scripts": {
+    "pnpm:devPreinstall": "node ./scripts/setup-zig.mjs",
+    "build": "node ./scripts/zig.mjs build -Doptimize=ReleaseFast",
+    "dev": "node ./scripts/zig.mjs build",
+    "test": "node ./scripts/zig.mjs build test",
+    "prepack": "pnpm run build && mkdir -p npm-bin && cp zig-out/bin/fkill npm-bin/fkill",
+    "pack:dry": "pnpm run prepack && npm pack --dry-run --ignore-scripts",
+    "publish:dry": "pnpm publish --dry-run --no-git-checks"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

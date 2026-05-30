@@ -1,2 +1,6 @@
 .zig-cache/
+.zig-local/
 zig-out/
+node_modules/
+npm-bin/
+*.tgz
