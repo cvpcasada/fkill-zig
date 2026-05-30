@@ -143,8 +143,7 @@ pub fn init(allocator: std.mem.Allocator, io: std.Io, flags: cli.Flags) !u8 {
 
     var raw = try RawMode.enable();
     defer raw.restore();
-    var rendered_lines: usize = terminalHeight();
-    try reserveRenderSpace(stdout, rendered_lines);
+    var rendered_lines: usize = 0;
 
     var term: SearchInput = .{};
     defer term.deinit(allocator);
@@ -510,22 +509,8 @@ fn render(
     }
 }
 
-fn reserveRenderSpace(stdout: *std.Io.Writer, rows: usize) !void {
-    if (rows <= 1) {
-        return;
-    }
-
-    var index: usize = 1;
-    while (index < rows) : (index += 1) {
-        try stdout.writeAll("\n");
-    }
-    try stdout.print("\x1b[{d}A", .{rows - 1});
-}
-
 fn clearRendered(stdout: *std.Io.Writer, line_count: usize) !void {
-    if (line_count > 1) {
-        try stdout.print("\x1b[{d}A", .{line_count - 1});
-    }
+    _ = line_count;
     try stdout.writeAll("\r\x1b[J");
 }
 
@@ -1017,17 +1002,6 @@ test "port spacing is only inserted before badges" {
     try std.testing.expect(std.mem.indexOf(u8, port_with_badge_line, ":5173\x1b[0m  🚦") != null);
 }
 
-test "reserve render space keeps a normal terminal canvas below the prompt" {
-    var writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer writer.deinit();
-
-    try reserveRenderSpace(&writer.writer, 1);
-    try std.testing.expectEqualSlices(u8, "", writer.written());
-
-    try reserveRenderSpace(&writer.writer, 4);
-    try std.testing.expectEqualSlices(u8, "\n\n\n\x1b[3A", writer.written());
-}
-
 test "clear rendered clears from the prompt cursor anchor" {
     var writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer writer.deinit();
@@ -1037,5 +1011,5 @@ test "clear rendered clears from the prompt cursor anchor" {
     writer.clearRetainingCapacity();
 
     try clearRendered(&writer.writer, 3);
-    try std.testing.expectEqualSlices(u8, "\x1b[2A\r\x1b[J", writer.written());
+    try std.testing.expectEqualSlices(u8, "\r\x1b[J", writer.written());
 }
