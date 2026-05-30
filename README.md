@@ -5,7 +5,7 @@ Zig reimplementation of `fkill-cli` for macOS.
 ## Install with npm
 
 ```sh
-pnpm add -g fkill-zig
+pnpm add -g @cyca/fkill-zig
 fkill --help
 ```
 

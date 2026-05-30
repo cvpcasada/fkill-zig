@@ -1,5 +1,5 @@
 {
-  "name": "fkill-zig",
+  "name": "@cyca/fkill-zig",
   "version": "9.0.0",
   "description": "Zig reimplementation of fkill-cli for macOS.",
   "license": "MIT",
