@@ -9,7 +9,7 @@
     "darwin"
   ],
   "bin": {
-    "fkill": "./bin/fkill"
+    "fkill": "bin/fkill"
   },
   "publishConfig": {
     "access": "public",
