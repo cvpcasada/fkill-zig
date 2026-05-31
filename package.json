@@ -9,11 +9,14 @@
     "darwin"
   ],
   "bin": {
-    "fkill": "./bin/fkill.js"
+    "fkill": "./bin/fkill"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "files": [
-    "bin",
-    "npm-bin/fkill",
+    "bin/fkill",
     "src",
     "build.zig",
     "build.zig.zon",
@@ -24,7 +27,7 @@
     "build": "node ./scripts/zig.mjs build -Doptimize=ReleaseFast",
     "dev": "node ./scripts/zig.mjs build",
     "test": "node ./scripts/zig.mjs build test",
-    "prepack": "pnpm run build && mkdir -p npm-bin && cp zig-out/bin/fkill npm-bin/fkill",
+    "prepack": "pnpm run build && mkdir -p bin && cp zig-out/bin/fkill bin/fkill && chmod 755 bin/fkill",
     "pack:dry": "pnpm run prepack && npm pack --dry-run --ignore-scripts",
     "publish:dry": "pnpm publish --dry-run --no-git-checks"
   },

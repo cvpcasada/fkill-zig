@@ -4,3 +4,5 @@ zig-out/
 node_modules/
 npm-bin/
 *.tgz
+.env.npm
+.npmrc
