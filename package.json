@@ -1,7 +1,7 @@
 {
   "name": "@cyca/fkill-zig",
-  "version": "0.0.1-alpha.0",
-  "description": "Zig reimplementation of fkill-cli for macOS.",
+  "version": "0.0.1-alpha.1",
+  "description": "Native macOS process killer CLI written in Zig.",
   "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.20.0",
@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "pnpm:devPreinstall": "node ./scripts/setup-zig.mjs",
-    "build": "node ./scripts/zig.mjs build -Doptimize=ReleaseFast",
+    "build": "node ./scripts/zig.mjs build -Doptimize=ReleaseSmall",
     "dev": "node ./scripts/zig.mjs build",
     "test": "node ./scripts/zig.mjs build test",
     "prepack": "pnpm run build && mkdir -p bin && cp zig-out/bin/fkill bin/fkill && chmod 755 bin/fkill",
@@ -33,5 +33,24 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "keywords": [
+    "fkill",
+    "kill",
+    "process",
+    "cli",
+    "terminal",
+    "macos",
+    "darwin",
+    "zig",
+    "native"
+  ],
+  "homepage": "https://github.com/cvpcasada/fkill-zig#readme",
+  "bugs": {
+    "url": "https://github.com/cvpcasada/fkill-zig/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cvpcasada/fkill-zig.git"
   }
 }
